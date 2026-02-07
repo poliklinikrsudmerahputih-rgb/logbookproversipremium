@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Logbook Pro - Versi Premium</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
+        .form-section { display: none; }
+        .active { display: block; }
+        .matriks-container { width: 100%; overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; font-size: 8pt; background: white; }
+        th, td { border: 1px solid #000 !important; padding: 4px; text-align: center; }
+        .text-left-imp { text-align: left !important; padding-left: 5px !important; }
+        .bg-gray-sub { background-color: #f3f4f6; font-size: 7pt; }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .print-area { display: block !important; }
+            @page { size: landscape; margin: 1cm; }
+            /* Memastikan tabel harian tampil rapi saat dicetak */
+            #rekap-table-container table { font-size: 9pt; width: 100%; }
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <aside id="sidebar" class="no-print bg-slate-900 text-white w-64 hidden flex-col shadow-2xl overflow-y-auto">
+        <div class="p-6 border-b border-slate-800 text-center">
+            <h1 class="font-black text-xl text-blue-400 uppercase">E-Logbook Pro</h1>
+            <p class="text-[9px] text-slate-500 font-bold tracking-widest uppercase">Dev: Daniel Ari Kristianto</p>
+        </div>
+        
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="showSection('sec-dashboard')" class="w-full text-left p-3 hover:bg-slate-800 rounded-xl flex items-center gap-3 font-bold text-sm"><span>📝</span> Input Harian</button>
+            <button onclick="showSection('sec-kamus')" class="w-full text-left p-3 hover:bg-slate-800 rounded-xl flex items-center gap-3 font-bold text-sm"><span>📂</span> Kelola Master</button>
+            <button onclick="showSection('sec-profil')" class="w-full text-left p-3 hover:bg-slate-800 rounded-xl flex items-center gap-3 font-bold text-sm"><span>⚙️</span> Profil Instansi</button>
+            
+            <div class="pt-6 pb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest border-t border-slate-800 mt-4">Laporan</div>
+            <div class="bg-slate-800/50 p-4 rounded-xl space-y-3">
+                <button onclick="copyShareLink()" class="w-full bg-indigo-600 hover:bg-indigo-500 p-2 rounded font-black text-[10px] uppercase mb-2">🔗 Salin Link Atasan</button>
+                
+                <div class="grid grid-cols-2 gap-1">
+                    <select id="sel-bulan" class="bg-slate-700 p-2 rounded text-[10px] text-white">
+                        <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
+                        <option value="3">April</option><option value="4">Mei</option><option value="5">Juni</option>
+                        <option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
+                        <option value="9">Oktober</option><option value="10">November</option><option value="11">Desember</option>
+                    </select>
+                    <select id="sel-tahun" class="bg-slate-700 p-2 rounded text-[10px] text-white"></select>
+                </div>
+                <input type="date" id="tgl-cetak-manual" class="w-full bg-slate-700 p-2 rounded text-[10px] text-white">
+                <button onclick="renderRekap('matriks')" class="w-full bg-blue-600 p-2 rounded font-black text-[10px] uppercase">Bulanan</button>
+                <select id="sel-triwulan" class="w-full bg-slate-700 p-2 rounded text-[10px] text-white">
+                    <option value="1">Triwulan 1</option><option value="2">Triwulan 2</option>
+                    <option value="3">Triwulan 3</option><option value="4">Triwulan 4</option>
+                </select>
+                <button onclick="renderRekap('triwulan')" class="w-full bg-emerald-600 p-2 rounded font-black text-[10px] uppercase">Triwulan</button>
+                <button onclick="renderRekap('tahunan')" class="w-full bg-amber-600 p-2 rounded font-black text-[10px] uppercase">Tahunan</button>
+            </div>
+        </nav>
+        <div class="p-4 border-t border-slate-800"><button onclick="logout()" class="w-full bg-red-500/20 text-red-500 p-2 rounded-lg font-bold text-xs uppercase">Keluar</button></div>
+    </aside>
+
+    <main class="flex-1 flex flex-col overflow-hidden bg-white">
+        <header id="topbar" class="no-print bg-white shadow-sm p-4 hidden justify-between items-center border-b">
+            <h2 id="page-title" class="font-black text-slate-700 uppercase text-sm">Dashboard</h2>
+            <div id="user-display" class="bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-[10px] font-bold uppercase border">...</div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-4 md:p-8">
+            
+            <div id="sec-login" class="form-section active no-print">
+                <div class="max-w-md mx-auto mt-20 bg-white p-10 rounded-3xl shadow-2xl border">
+                    <h2 class="text-2xl font-black mb-6 text-center text-slate-800 uppercase tracking-tighter">Login E-Logbook</h2>
+                    <div class="space-y-4">
+                        <input type="email" id="email" placeholder="Email" class="w-full border p-4 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition">
+                        <input type="password" id="password" placeholder="Password" class="w-full border p-4 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition">
+                        <button onclick="login()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-black uppercase hover:bg-slate-800 transition shadow-lg">Masuk</button>
+                        <div class="relative py-2">
+                            <div class="absolute inset-0 flex items-center"><span class="w-full border-t"></span></div>
+                            <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-slate-400 font-bold">Atau</span></div>
+                        </div>
+                        <button onclick="signUp()" class="w-full bg-white border-2 border-blue-600 text-blue-600 p-4 rounded-xl font-black uppercase hover:bg-blue-50 transition">Daftar Akun Baru</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sec-kamus" class="form-section no-print">
+                <div class="bg-white p-6 border rounded-2xl shadow-sm mb-6">
+                    <h3 class="font-black mb-4 uppercase text-blue-600">📂 Master Butir Kegiatan</h3>
+                    <input type="hidden" id="k-id">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <input type="text" id="k-nama" placeholder="Nama Butir Kegiatan" class="border p-3 rounded-xl col-span-2">
+                        <input type="number" id="k-target" placeholder="Target Tahunan" class="border p-3 rounded-xl">
+                        <select id="k-hasil" class="border p-3 rounded-xl">
+                            <option value="Dokumen">Dokumen</option><option value="Laporan">Laporan</option>
+                            <option value="Kegiatan">Kegiatan</option><option value="Logbook">Logbook</option>
+                        </select>
+                        <input type="text" id="k-link" placeholder="Link Bukti Dukung" class="border p-3 rounded-xl col-span-2">
+                        <button onclick="saveKamus()" class="bg-slate-900 text-white p-3 rounded-xl font-bold uppercase">Simpan</button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl border overflow-hidden">
+                    <table class="w-full text-xs"><thead class="bg-slate-100"><tr><th>No</th><th>Kegiatan</th><th>Target</th><th>Output</th><th>Link</th><th>Aksi</th></tr></thead><tbody id="list-kamus"></tbody></table>
+                </div>
+            </div>
+
+            <div id="sec-dashboard" class="form-section no-print">
+                <div class="bg-white p-6 border rounded-2xl shadow-sm mb-6">
+                    <h3 class="font-black mb-4 uppercase text-blue-600">✍️ Input Logbook Harian</h3>
+                    <input type="hidden" id="log-id">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="col-span-2">
+                            <label class="text-[10px] font-bold text-slate-400 uppercase">Butir Kegiatan</label>
+                            <select id="log-kegiatan" class="w-full border p-3 rounded-xl"></select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase">Tanggal</label>
+                            <input type="date" id="log-tgl" class="w-full border p-3 rounded-xl">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase">No. RM</label>
+                            <input type="text" id="log-rm" class="w-full border p-3 rounded-xl">
+                        </div>
+                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Mulai</label><input type="time" id="log-mulai" class="w-full border p-3 rounded-xl"></div>
+                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Selesai</label><input type="time" id="log-selesai" class="w-full border p-3 rounded-xl"></div>
+                        <div><label class="text-[10px] font-bold text-slate-400 uppercase">Qty</label><input type="number" id="log-qty" value="1" class="w-full border p-3 rounded-xl"></div>
+                        <div class="flex items-end"><button onclick="saveLog()" class="w-full bg-blue-600 text-white p-3 rounded-xl font-black uppercase">Simpan</button></div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl border overflow-hidden shadow-sm">
+                    <div class="p-4 flex justify-between items-center border-b">
+                        <h4 class="font-bold text-sm uppercase">Riwayat Input Harian</h4>
+                        <div class="flex gap-2">
+                            <button onclick="exportToExcel('list-log-harian', 'Logbook_Harian')" class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded text-[10px] font-bold uppercase">Excel</button>
+                            <button onclick="renderRekap('harian_print')" class="bg-blue-100 text-blue-700 px-3 py-1 rounded text-[10px] font-bold uppercase">Cetak Harian</button>
+                        </div>
+                    </div>
+                    <table class="w-full text-xs" id="list-log-harian">
+                        <thead class="bg-slate-50"><tr><th>No</th><th>Kegiatan</th><th>RM</th><th>Waktu</th><th>Qty</th><th>Aksi</th></tr></thead>
+                        <tbody id="list-history"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="sec-profil" class="form-section no-print max-w-2xl mx-auto">
+                <div class="bg-white p-8 border rounded-3xl shadow-sm">
+                    <h3 class="font-black mb-6 uppercase border-b pb-2">⚙️ Profil Instansi</h3>
+                    <div class="grid grid-cols-1 gap-4">
+                        <input type="text" id="p-nama" placeholder="Nama Lengkap & Gelar" class="border p-3 rounded-xl">
+                        <input type="text" id="p-nip" placeholder="NIP" class="border p-3 rounded-xl">
+                        <input type="text" id="p-jabatan" placeholder="Jabatan" class="border p-3 rounded-xl">
+                        <input type="text" id="p-org" placeholder="Instansi" class="border p-3 rounded-xl">
+                        <input type="text" id="p-unit" placeholder="Unit Kerja" class="border p-3 rounded-xl">
+                        <input type="text" id="p-kota" placeholder="Kabupaten/Kota" class="border p-3 rounded-xl">
+                        <hr><label class="font-bold text-xs text-blue-600 uppercase">Pejabat Penandatangan</label>
+                        <input type="text" id="p-atasan-nama" placeholder="Nama Atasan" class="border p-3 rounded-xl">
+                        <input type="text" id="p-atasan-nip" placeholder="NIP Atasan" class="border p-3 rounded-xl">
+                        <input type="text" id="p-atasan-jabatan" placeholder="Jabatan Atasan" class="border p-3 rounded-xl">
+                        <button onclick="saveProfil()" class="bg-slate-900 text-white p-4 rounded-xl font-bold uppercase mt-4">Simpan Profil</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sec-rekap" class="form-section print-area bg-white p-4">
+                <div id="rekap-nav-controls" class="no-print flex flex-wrap gap-4 justify-between mb-8 bg-slate-100 p-4 rounded-xl border border-slate-200">
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <h4 class="font-black uppercase mr-2 text-[10px] text-slate-500">Opsi Laporan:</h4>
+                        <select id="view-bulan" class="p-1 text-xs border rounded bg-white" onchange="syncAndRender('bulan')">
+                            <option value="0">Januari</option><option value="1">Februari</option><option value="2">Maret</option>
+                            <option value="3">April</option><option value="4">Mei</option><option value="5">Juni</option>
+                            <option value="6">Juli</option><option value="7">Agustus</option><option value="8">September</option>
+                            <option value="9">Oktober</option><option value="10">November</option><option value="11">Desember</option>
+                        </select>
+                        <button onclick="renderRekap('matriks')" class="bg-blue-500 text-white px-3 py-1 rounded text-[10px] font-bold hover:bg-blue-600">BULANAN</button>
+                        <button onclick="renderRekap('triwulan')" class="bg-emerald-500 text-white px-3 py-1 rounded text-[10px] font-bold hover:bg-emerald-600">TRIWULAN</button>
+                        <button onclick="renderRekap('tahunan')" class="bg-amber-500 text-white px-3 py-1 rounded text-[10px] font-bold hover:bg-amber-600">TAHUNAN</button>
+                        
+                        <div class="ml-4 pl-4 border-l flex items-center gap-2">
+                            <h4 class="font-black uppercase text-[10px] text-slate-500">Tampilan:</h4>
+                            <select id="view-mode-atasan" class="p-1 text-xs border rounded bg-white font-bold text-blue-600 uppercase" onchange="switchViewAtasan(this.value)">
+                                <option value="rekap">📄 Rekapitulasi</option>
+                                <option value="harian">📝 Detail Harian</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="exportToExcel('rekap-table-container', 'Laporan_Logbook')" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase">Excel</button>
+                        <button onclick="window.print()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase shadow-lg">Cetak / PDF</button>
+                        <button id="btn-tutup-rekap" onclick="showSection('sec-dashboard')" class="bg-white border px-4 py-2 rounded-lg font-bold text-xs uppercase hover:bg-gray-50">Tutup</button>
+                    </div>
+                </div>
+
+                <div class="text-center mb-6">
+                    <h1 id="r-org" class="text-xl font-black uppercase"></h1>
+                    <h2 id="r-title" class="text-md font-bold underline uppercase"></h2>
+                    <p id="r-periode" class="text-[9pt] font-bold italic"></p>
+                </div>
+
+                <div class="grid grid-cols-2 text-[8pt] mb-4 font-semibold">
+                    <div><p>Nama : <span id="r-nama"></span></p><p>NIP : <span id="r-nip"></span></p><p>Jabatan : <span id="r-jabatan"></span></p></div>
+                    <div class="text-right"><p>Unit Kerja : <span id="r-unit"></span></p><p>Kab/Kota : <span id="r-kota"></span></p></div>
+                </div>
+
+                <div id="rekap-table-container" class="matriks-container mb-10"></div>
+
+                <div class="grid grid-cols-2 text-[8pt] text-center mt-10 break-inside-avoid">
+                    <div><p>Mengetahui,</p><p id="r-atasan-jab" class="font-black uppercase"></p><div class="h-20"></div><p id="r-atasan-nama" class="font-bold underline uppercase"></p><p>NIP. <span id="r-atasan-nip"></span></p></div>
+                    <div><p id="r-tgl-cetak"></p><p class="font-black uppercase">Pejabat Fungsional</p><div class="h-20"></div><p id="r-saya-nama" class="font-bold underline uppercase"></p><p>NIP. <span id="r-saya-nip"></span></p></div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const SB_URL = "https://johcbvlxvvyvclkurbjn.supabase.co";
+        const SB_KEY = "sb_publishable_G1KUys-BdOyrz0UHQnUvSQ_AnCj5lvl";
+        const _supabase = supabase.createClient(SB_URL, SB_KEY);
+
+        let currentUser = null;
+        let profileData = {};
+        let masterKamus = [];
+
+        window.onload = () => {
+            const selTahun = document.getElementById('sel-tahun');
+            const cY = new Date().getFullYear();
+            for(let y=cY-2; y<=cY+2; y++) {
+                let o = document.createElement('option'); o.value = y; o.innerText = y;
+                if(y===cY) o.selected=true; selTahun.appendChild(o);
+            }
+            document.getElementById('log-tgl').valueAsDate = new Date();
+            document.getElementById('tgl-cetak-manual').valueAsDate = new Date();
+            checkUser();
+        };
+
+        async function checkUser() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const viewId = urlParams.get('view');
+
+            if (viewId) {
+                document.getElementById('sec-login').classList.remove('active');
+                document.getElementById('sidebar').classList.add('hidden');
+                document.getElementById('topbar').classList.add('hidden');
+                document.getElementById('rekap-nav-controls').classList.remove('hidden'); 
+                document.getElementById('btn-tutup-rekap').classList.add('hidden');
+
+                const { data: p } = await _supabase.from('profiles').select('*').eq('id', viewId).single();
+                if(p) {
+                    profileData = p;
+                    currentUser = { id: viewId };
+                    const { data: km } = await _supabase.from('kamus_kegiatan').select('*').eq('user_id', viewId);
+                    masterKamus = km || [];
+                    document.getElementById('view-bulan').value = new Date().getMonth();
+                    document.getElementById('sel-bulan').value = new Date().getMonth();
+                    showSection('sec-rekap');
+                    renderRekap('matriks');
+                }
+                return;
+            }
+
+            const { data: { user } } = await _supabase.auth.getUser();
+            if (user) {
+                currentUser = user;
+                document.getElementById('sec-login').classList.remove('active');
+                document.getElementById('sidebar').classList.replace('hidden', 'flex');
+                document.getElementById('topbar').classList.replace('hidden', 'flex');
+                
+                const { data: p } = await _supabase.from('profiles').select('*').eq('id', user.id).single();
+                if(p) {
+                    profileData = p;
+                    document.getElementById('user-display').innerText = p.nama_lengkap;
+                    fillFormProfil(p);
+                    loadKamus();
+                    loadHistory();
+                    showSection('sec-dashboard');
+                } else {
+                    showSection('sec-profil');
+                }
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            if(!email || !pass) return alert("Isi email dan password!");
+            const { error } = await _supabase.auth.signInWithPassword({ email, password: pass });
+            if (error) alert(error.message); else checkUser();
+        }
+
+        async function signUp() {
+            const email = document.getElementById('email').value;
+            const pass = document.getElementById('password').value;
+            if(!email || pass.length < 6) return alert("Email valid & password min. 6 karakter!");
+            const { error } = await _supabase.auth.signUp({ email, password: pass });
+            if (error) alert(error.message); else alert("Berhasil! Silakan cek email konfirmasi atau login.");
+        }
+
+        async function logout() {
+            await _supabase.auth.signOut();
+            location.reload();
+        }
+
+        function showSection(id) {
+            document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if(id === 'sec-rekap') document.getElementById('rekap-nav-controls').classList.remove('hidden');
+        }
+
+        function copyShareLink() {
+            const link = window.location.origin + window.location.pathname + "?view=" + currentUser.id;
+            navigator.clipboard.writeText(link).then(() => alert("Link Laporan Berhasil Disalin!"));
+        }
+
+        function syncAndRender(type) {
+            if(type === 'bulan') {
+                document.getElementById('sel-bulan').value = document.getElementById('view-bulan').value;
+                renderRekap('matriks');
+            }
+        }
+
+        // --- ATASAN / SHARE VIEW SWITCHER ---
+        async function switchViewAtasan(val) {
+            if(val === 'harian') {
+                renderRekap('harian_print');
+            } else {
+                renderRekap('matriks');
+            }
+        }
+
+        // --- DATA HANDLERS ---
+        async function loadKamus() {
+            const { data } = await _supabase.from('kamus_kegiatan').select('*').eq('user_id', currentUser.id).order('created_at');
+            masterKamus = data || [];
+            document.getElementById('list-kamus').innerHTML = masterKamus.map((k, i) => `
+                <tr class="border-b"><td>${i+1}</td><td class="text-left-imp font-bold">${k.nama_kegiatan}</td><td>${k.target_tahunan}</td><td>${k.hasil_kerja}</td>
+                <td><a href="${k.link_bukti_dukung}" target="_blank" class="text-blue-500">Link</a></td>
+                <td class="flex gap-2 p-1"><button onclick="editKamus('${k.id}')" class="text-blue-600">Edit</button><button onclick="delKamus('${k.id}')" class="text-red-600">Hapus</button></td></tr>
+            `).join('');
+            document.getElementById('log-kegiatan').innerHTML = masterKamus.map(k => `<option value="${k.id}">${k.nama_kegiatan}</option>`).join('');
+        }
+
+        async function saveKamus() {
+            const id = document.getElementById('k-id').value;
+            const payload = {
+                user_id: currentUser.id,
+                nama_kegiatan: document.getElementById('k-nama').value,
+                target_tahunan: parseInt(document.getElementById('k-target').value),
+                hasil_kerja: document.getElementById('k-hasil').value,
+                link_bukti_dukung: document.getElementById('k-link').value
+            };
+            if(id) await _supabase.from('kamus_kegiatan').update(payload).eq('id', id);
+            else await _supabase.from('kamus_kegiatan').insert([payload]);
+            document.getElementById('k-id').value = "";
+            loadKamus();
+        }
+
+        function editKamus(id) {
+            const k = masterKamus.find(x => x.id == id);
+            document.getElementById('k-id').value = k.id;
+            document.getElementById('k-nama').value = k.nama_kegiatan;
+            document.getElementById('k-target').value = k.target_tahunan;
+            document.getElementById('k-hasil').value = k.hasil_kerja;
+            document.getElementById('k-link').value = k.link_bukti_dukung;
+        }
+
+        async function delKamus(id) { if(confirm("Hapus master ini?")) { await _supabase.from('kamus_kegiatan').delete().eq('id', id); loadKamus(); } }
+
+        async function loadHistory() {
+            const { data } = await _supabase.from('logbook_harian').select('*, kamus_kegiatan(nama_kegiatan)').eq('user_id', currentUser.id).order('tanggal', {ascending:false});
+            document.getElementById('list-history').innerHTML = (data || []).map((l, i) => `
+                <tr><td>${i+1}</td><td class="text-left-imp">${l.kamus_kegiatan?.nama_kegiatan || 'Tanpa Nama'}</td><td>${l.no_rm}</td><td>${l.jam_mulai} - ${l.jam_selesai}</td><td>${l.qty}</td>
+                <td><button onclick="delLog('${l.id}')" class="text-red-600">Hapus</button></td></tr>
+            `).join('');
+        }
+
+        async function saveLog() {
+            const payload = {
+                user_id: currentUser.id,
+                kegiatan_id: document.getElementById('log-kegiatan').value,
+                tanggal: document.getElementById('log-tgl').value,
+                no_rm: document.getElementById('log-rm').value,
+                jam_mulai: document.getElementById('log-mulai').value,
+                jam_selesai: document.getElementById('log-selesai').value,
+                qty: parseInt(document.getElementById('log-qty').value)
+            };
+            await _supabase.from('logbook_harian').insert([payload]);
+            loadHistory();
+        }
+
+        async function delLog(id) { await _supabase.from('logbook_harian').delete().eq('id', id); loadHistory(); }
+
+        function fillFormProfil(p) {
+            document.getElementById('p-nama').value = p.nama_lengkap || '';
+            document.getElementById('p-nip').value = p.nip || '';
+            document.getElementById('p-jabatan').value = p.jabatan || '';
+            document.getElementById('p-org').value = p.instansi || '';
+            document.getElementById('p-unit').value = p.unit_kerja || '';
+            document.getElementById('p-kota').value = p.kota || '';
+            document.getElementById('p-atasan-nama').value = p.atasan_nama || '';
+            document.getElementById('p-atasan-nip').value = p.atasan_nip || '';
+            document.getElementById('p-atasan-jabatan').value = p.atasan_jabatan || '';
+        }
+
+        async function saveProfil() {
+            const payload = {
+                id: currentUser.id,
+                nama_lengkap: document.getElementById('p-nama').value,
+                nip: document.getElementById('p-nip').value,
+                jabatan: document.getElementById('p-jabatan').value,
+                instansi: document.getElementById('p-org').value,
+                unit_kerja: document.getElementById('p-unit').value,
+                kota: document.getElementById('p-kota').value,
+                atasan_nama: document.getElementById('p-atasan-nama').value,
+                atasan_nip: document.getElementById('p-atasan-nip').value,
+                atasan_jabatan: document.getElementById('p-atasan-jabatan').value
+            };
+            await _supabase.from('profiles').upsert(payload);
+            alert("Profil berhasil diperbarui!");
+            checkUser();
+        }
+
+        // --- RENDER REKAP & PRINT LOGIC ---
+        async function renderRekap(mode) {
+            showSection('sec-rekap');
+            const bln = parseInt(document.getElementById('sel-bulan').value);
+            const thn = parseInt(document.getElementById('sel-tahun').value);
+            
+            // Info Header Cetak
+            document.getElementById('r-org').innerText = profileData.instansi || '-';
+            document.getElementById('r-nama').innerText = profileData.nama_lengkap || '-';
+            document.getElementById('r-nip').innerText = profileData.nip || '-';
+            document.getElementById('r-jabatan').innerText = profileData.jabatan || '-';
+            document.getElementById('r-unit').innerText = profileData.unit_kerja || '-';
+            document.getElementById('r-kota').innerText = profileData.kota || '-';
+            document.getElementById('r-atasan-nama').innerText = profileData.atasan_nama || '-';
+            document.getElementById('r-atasan-jab').innerText = profileData.atasan_jabatan || '-';
+            document.getElementById('r-atasan-nip').innerText = profileData.atasan_nip || '-';
+            document.getElementById('r-saya-nama').innerText = profileData.nama_lengkap || '-';
+            document.getElementById('r-saya-nip').innerText = profileData.nip || '-';
+            
+            const tglCetak = new Date(document.getElementById('tgl-cetak-manual').value);
+            document.getElementById('r-tgl-cetak').innerText = `${profileData.kota || 'Kota'}, ${tglCetak.toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}`;
+
+            let query = _supabase.from('logbook_harian').select('*, kamus_kegiatan(nama_kegiatan)').eq('user_id', currentUser.id);
+            
+            if(mode === 'harian_print') {
+                document.getElementById('r-title').innerText = "RIWAYAT INPUT HARIAN";
+                document.getElementById('r-periode').innerText = `Harian - Periode: ${document.getElementById('sel-bulan').options[bln].text} ${thn}`;
+                query = query.gte('tanggal', `${thn}-${String(bln+1).padStart(2,'0')}-01`).lte('tanggal', `${thn}-${String(bln+1).padStart(2,'0')}-31`).order('tanggal', {ascending: true});
+                
+                const { data: harianLogs } = await query;
+                let html = `<table><thead><tr><th>No</th><th>Tanggal</th><th>Kegiatan</th><th>No. RM</th><th>Waktu</th><th>Qty</th></tr></thead><tbody>`;
+                (harianLogs || []).forEach((l, i) => {
+                    html += `<tr><td>${i+1}</td><td>${l.tanggal}</td><td class="text-left-imp">${l.kamus_kegiatan?.nama_kegiatan || 'Tanpa Nama'}</td><td>${l.no_rm}</td><td>${l.jam_mulai} - ${l.jam_selesai}</td><td>${l.qty}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                document.getElementById('rekap-table-container').innerHTML = html;
+                return;
+            }
+
+            // Mode Rekap Bulanan/Triwulan/Tahunan
+            if(mode==='matriks') {
+                document.getElementById('r-title').innerText = "LAPORAN LOGBOOK BULANAN";
+                document.getElementById('r-periode').innerText = `Periode: ${document.getElementById('sel-bulan').options[bln].text} ${thn}`;
+                query = query.gte('tanggal', `${thn}-${String(bln+1).padStart(2,'0')}-01`).lte('tanggal', `${thn}-${String(bln+1).padStart(2,'0')}-31`);
+            } else if(mode==='triwulan') {
+                const tri = parseInt(document.getElementById('sel-triwulan').value);
+                const start = (tri-1)*3 + 1; const end = start + 2;
+                document.getElementById('r-title').innerText = `LAPORAN LOGBOOK TRIWULAN ${tri}`;
+                document.getElementById('r-periode').innerText = `Tahun: ${thn}`;
+                query = query.gte('tanggal', `${thn}-${String(start).padStart(2,'0')}-01`).lte('tanggal', `${thn}-${String(end).padStart(2,'0')}-31`);
+            } else if(mode==='tahunan') {
+                document.getElementById('r-title').innerText = "LAPORAN LOGBOOK TAHUNAN";
+                document.getElementById('r-periode').innerText = `Tahun: ${thn}`;
+                query = query.gte('tanggal', `${thn}-01-01`).lte('tanggal', `${thn}-12-31`);
+            }
+
+            const { data: logs } = await query;
+            let html = `<table><thead><tr><th>No</th><th>Butir Kegiatan</th><th>Target</th><th>Hasil</th><th>Total Capaian</th><th>Ket</th></tr></thead><tbody>`;
+            masterKamus.forEach((k, i) => {
+                const total = (logs || []).filter(l => l.kegiatan_id === k.id).reduce((sum, item) => sum + item.qty, 0);
+                html += `<tr><td>${i+1}</td><td class="text-left-imp">${k.nama_kegiatan}</td><td>${k.target_tahunan}</td><td>${k.hasil_kerja}</td><td>${total}</td><td>Selesai</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            document.getElementById('rekap-table-container').innerHTML = html;
+        }
+
+        function exportToExcel(id, name) {
+            const table = document.getElementById(id);
+            const wb = XLSX.utils.table_to_book(table);
+            XLSX.writeFile(wb, `${name}_${new Date().getTime()}.xlsx`);
+        }
+    </script>
+</body>
+</html>
